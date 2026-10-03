@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ShieldCheck, FileText, Menu, X, ArrowRight, Lock, Eye } from 'lucide-react';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import HomeView from './components/HomeView';
 import CreateView from './components/CreateView';
 import TemplatesView from './components/TemplatesView';
@@ -329,6 +330,7 @@ export default function App() {
         </div>
       </footer>
 
+      <SpeedInsights />
     </div>
   );
 }
