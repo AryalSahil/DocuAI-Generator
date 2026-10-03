@@ -1,0 +1,6 @@
+{
+  "name": "DocuAI Generator",
+  "description": "An AI-assisted document generation platform for creating legitimate Certificates, Offer Letters, and Internship Letters with premium design and secure cryptographic verification hashes.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
