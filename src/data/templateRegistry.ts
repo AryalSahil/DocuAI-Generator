@@ -592,5 +592,189 @@ export const TEMPLATE_REGISTRY: TemplateDefinition[] = [
         </div>
       </div>
     `
+  },
+
+  // ================= BIRTH CERTIFICATES =================
+  {
+    id: 'birth-classic',
+    type: 'birth-certificate' as any,
+    name: 'Standard Birth Certificate Layout',
+    category: 'Draft Template',
+    description: 'A structured blueprint for drafting birth registration forms under legitimate, authorized corporate, legal, or reference use.',
+    thumbnailClass: 'border-slate-800 bg-white',
+    htmlStructure: `
+      <div class="h-full border-[14px] border-slate-900 p-8 flex flex-col justify-between text-left bg-white relative font-serif select-none" style="box-sizing: border-box; background-image: radial-gradient(circle, #fcfcfc 10%, transparent 11%); background-size: 14px 14px;">
+        <div class="absolute inset-1.5 border-2 border-slate-300 pointer-events-none"></div>
+        
+        {/* Strict legal labeling watermark */}
+        <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-5 pointer-events-none select-none text-center rotate-[-30deg]">
+          <div class="text-[54px] font-black tracking-widest text-slate-900 font-sans">TEMPLATE / DRAFT</div>
+          <div class="text-lg font-bold text-slate-800 font-sans mt-2">NOT A GOVERNMENT-ISSUED CERTIFICATE</div>
+        </div>
+
+        {/* Top heading */}
+        <div class="pt-2 pb-4 border-b-2 border-slate-900 flex justify-between items-start relative z-10">
+          <div class="space-y-1">
+            <div class="text-[14px] font-black uppercase text-slate-900 tracking-wider">CERTIFICATE OF BIRTH REGISTRATION</div>
+            <div class="text-[8px] font-mono tracking-widest text-slate-400">ISSUING AUTHORITY: {{issuingAuthority}} ({{issuingOffice}})</div>
+          </div>
+          <div class="text-right">
+            <span class="px-2 py-0.5 border border-red-400 text-red-700 text-[8px] font-sans font-bold rounded uppercase">
+              TEMPLATE / DRAFT
+            </span>
+          </div>
+        </div>
+
+        {/* Dynamic Parameter Grid */}
+        <div class="my-4 space-y-4 relative z-10 text-xs text-slate-800">
+          
+          {/* Child Segment */}
+          <div class="space-y-1 pb-2 border-b border-slate-200">
+            <h3 class="text-[9px] font-sans font-bold text-slate-400 tracking-wider uppercase">I. Child Information</h3>
+            <div class="grid grid-cols-2 gap-x-6 gap-y-1.5 pt-1">
+              <div><span class="text-slate-400 font-sans text-[10px]">Full Name:</span> <strong class="text-slate-900 text-sm italic">{{childFullName}}</strong></div>
+              <div><span class="text-slate-400 font-sans text-[10px]">Gender:</span> <strong class="text-slate-800">{{childGender}}</strong></div>
+              <div><span class="text-slate-400 font-sans text-[10px]">Date of Birth:</span> <strong class="text-slate-800 font-mono">{{childDob}}</strong></div>
+              <div><span class="text-slate-400 font-sans text-[10px]">Time of Birth:</span> <strong class="text-slate-800 font-mono">{{childTob}}</strong></div>
+              <div class="col-span-2"><span class="text-slate-400 font-sans text-[10px]">Place of Birth:</span> <strong class="text-slate-800">{{childPob}}</strong></div>
+            </div>
+          </div>
+
+          {/* Parents Segment */}
+          <div class="space-y-1 pb-2 border-b border-slate-200">
+            <h3 class="text-[9px] font-sans font-bold text-slate-400 tracking-wider uppercase">II. Parental Information</h3>
+            <div class="grid grid-cols-2 gap-x-6 gap-y-1.5 pt-1">
+              <div><span class="text-slate-400 font-sans text-[10px]">Father's Full Name:</span> <strong class="text-slate-800">{{fatherFullName}}</strong></div>
+              <div><span class="text-slate-400 font-sans text-[10px]">Mother's Full Name:</span> <strong class="text-slate-800">{{motherFullName}}</strong></div>
+              <div class="col-span-2"><span class="text-slate-400 font-sans text-[10px]">Parent Address:</span> <strong class="text-slate-700 text-[11px] block">{{parentAddress}}</strong></div>
+            </div>
+          </div>
+
+          {/* Registration Segment */}
+          <div class="space-y-1 pb-2 border-b border-slate-200">
+            <h3 class="text-[9px] font-sans font-bold text-slate-400 tracking-wider uppercase">III. Registration Ledger Coordinates</h3>
+            <div class="grid grid-cols-3 gap-2 pt-1 font-mono text-[10px]">
+              <div><span class="text-slate-400 font-sans block text-[8px] uppercase">Reg No. (Ref)</span> <strong class="text-indigo-900 select-all">{{documentId}}</strong></div>
+              <div><span class="text-slate-400 font-sans block text-[8px] uppercase">Reg Date</span> <strong class="text-slate-800">{{registrationDate}}</strong></div>
+              <div><span class="text-slate-400 font-sans block text-[8px] uppercase">Jurisdiction</span> <strong class="text-slate-800">{{district}}, {{state}}</strong></div>
+            </div>
+          </div>
+
+          {/* Notes */}
+          <div class="space-y-0.5">
+            <h3 class="text-[9px] font-sans font-bold text-slate-400 tracking-wider uppercase">IV. Administrative Notes</h3>
+            <p class="text-[10px] italic text-slate-500 leading-normal bg-slate-50 p-2 rounded border border-slate-100">{{notes}}</p>
+          </div>
+        </div>
+
+        {/* Signatures */}
+        <div class="border-t border-slate-900 pt-4 flex justify-between items-end text-xs text-slate-500 relative z-10">
+          <div class="space-y-1 text-left">
+            <div class="h-8 flex items-end pl-1">{{sigHtml}}</div>
+            <div class="border-t border-slate-200 pt-0.5">
+              <div class="font-bold text-slate-800 text-[10px]">{{issuerName}}</div>
+              <div class="text-[8px] uppercase tracking-wider font-sans">{{issuerDesignation}}</div>
+            </div>
+          </div>
+          <div class="text-right text-[8px] font-mono text-slate-400 space-y-0.5">
+            <div class="text-red-600 font-bold uppercase tracking-wide">NOT A GOVERNMENT-ISSUED DOCUMENT</div>
+            <div>VERIFIABLE LEDGER HASH: <span class="font-bold text-slate-800 select-all">{{documentId}}</span></div>
+          </div>
+        </div>
+      </div>
+    `,
+  },
+
+  // ================= DEATH CERTIFICATES =================
+  {
+    id: 'death-classic',
+    type: 'death-certificate' as any,
+    name: 'Standard Death Certificate Layout',
+    category: 'Draft Template',
+    description: 'A structured blueprint for drafting death registration forms under legitimate, authorized corporate, legal, or reference use.',
+    thumbnailClass: 'border-slate-800 bg-white',
+    htmlStructure: `
+      <div class="h-full border-[14px] border-slate-900 p-8 flex flex-col justify-between text-left bg-white relative font-serif select-none" style="box-sizing: border-box; background-image: radial-gradient(circle, #fcfcfc 10%, transparent 11%); background-size: 14px 14px;">
+        <div class="absolute inset-1.5 border-2 border-slate-300 pointer-events-none"></div>
+        
+        {/* Strict legal labeling watermark */}
+        <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-5 pointer-events-none select-none text-center rotate-[-30deg]">
+          <div class="text-[54px] font-black tracking-widest text-slate-900 font-sans">TEMPLATE / DRAFT</div>
+          <div class="text-lg font-bold text-slate-800 font-sans mt-2">NOT A GOVERNMENT-ISSUED CERTIFICATE</div>
+        </div>
+
+        {/* Top heading */}
+        <div class="pt-2 pb-4 border-b-2 border-slate-900 flex justify-between items-start relative z-10">
+          <div class="space-y-1">
+            <div class="text-[14px] font-black uppercase text-slate-900 tracking-wider">CERTIFICATE OF DEATH REGISTRATION</div>
+            <div class="text-[8px] font-mono tracking-widest text-slate-400">ISSUING AUTHORITY: {{issuingAuthority}} ({{issuingOffice}})</div>
+          </div>
+          <div class="text-right">
+            <span class="px-2 py-0.5 border border-red-400 text-red-700 text-[8px] font-sans font-bold rounded uppercase">
+              TEMPLATE / DRAFT
+            </span>
+          </div>
+        </div>
+
+        {/* Dynamic Parameter Grid */}
+        <div class="my-4 space-y-4 relative z-10 text-xs text-slate-800">
+          
+          {/* Deceased Segment */}
+          <div class="space-y-1 pb-2 border-b border-slate-200">
+            <h3 class="text-[9px] font-sans font-bold text-slate-400 tracking-wider uppercase">I. Deceased Person Information</h3>
+            <div class="grid grid-cols-2 gap-x-6 gap-y-1.5 pt-1">
+              <div><span class="text-slate-400 font-sans text-[10px]">Full Name:</span> <strong class="text-slate-900 text-sm italic">{{deceasedFullName}}</strong></div>
+              <div><span class="text-slate-400 font-sans text-[10px]">Gender / Age:</span> <strong class="text-slate-800">{{deceasedGender}} / {{deceasedAge}}</strong></div>
+              <div><span class="text-slate-400 font-sans text-[10px]">Date of Death:</span> <strong class="text-slate-800 font-mono">{{deceasedDod}}</strong></div>
+              <div><span class="text-slate-400 font-sans text-[10px]">Time of Death:</span> <strong class="text-slate-800 font-mono">{{deceasedTod}}</strong></div>
+              <div><span class="text-slate-400 font-sans text-[10px]">Date of Birth:</span> <strong class="text-slate-800 font-mono">{{deceasedDob}}</strong></div>
+              <div><span class="text-slate-400 font-sans text-[10px]">Place of Death:</span> <strong class="text-slate-800">{{deceasedPod}}</strong></div>
+            </div>
+          </div>
+
+          {/* Family Segment */}
+          <div class="space-y-1 pb-2 border-b border-slate-200">
+            <h3 class="text-[9px] font-sans font-bold text-slate-400 tracking-wider uppercase">II. Immediate Family Contact</h3>
+            <div class="grid grid-cols-2 gap-x-6 gap-y-1.5 pt-1">
+              <div><span class="text-slate-400 font-sans text-[10px]">Father's Name:</span> <strong class="text-slate-800">{{fatherName}}</strong></div>
+              <div><span class="text-slate-400 font-sans text-[10px]">Mother's Name:</span> <strong class="text-slate-800">{{motherName}}</strong></div>
+              <div><span class="text-slate-400 font-sans text-[10px]">Spouse Name:</span> <strong class="text-slate-800">{{spouseName}}</strong></div>
+              <div class="col-span-2"><span class="text-slate-400 font-sans text-[10px]">Address:</span> <strong class="text-slate-700 text-[11px] block">{{familyAddress}}</strong></div>
+            </div>
+          </div>
+
+          {/* Registration Segment */}
+          <div class="space-y-1 pb-2 border-b border-slate-200">
+            <h3 class="text-[9px] font-sans font-bold text-slate-400 tracking-wider uppercase">III. Registration Ledger Coordinates</h3>
+            <div class="grid grid-cols-3 gap-2 pt-1 font-mono text-[10px]">
+              <div><span class="text-slate-400 font-sans block text-[8px] uppercase">Reg No. (Ref)</span> <strong class="text-indigo-900 select-all">{{documentId}}</strong></div>
+              <div><span class="text-slate-400 font-sans block text-[8px] uppercase">Reg Date</span> <strong class="text-slate-800">{{registrationDate}}</strong></div>
+              <div><span class="text-slate-400 font-sans block text-[8px] uppercase">Jurisdiction</span> <strong class="text-slate-800">{{district}}, {{state}}</strong></div>
+            </div>
+          </div>
+
+          {/* Cause of Death */}
+          <div class="space-y-0.5">
+            <h3 class="text-[9px] font-sans font-bold text-slate-400 tracking-wider uppercase">IV. Cause of Death (If supplied)</h3>
+            <p class="text-[10px] font-bold text-slate-800 leading-normal bg-slate-50 p-2 rounded border border-slate-100">{{causeOfDeath}}</p>
+          </div>
+        </div>
+
+        {/* Signatures */}
+        <div class="border-t border-slate-900 pt-4 flex justify-between items-end text-xs text-slate-500 relative z-10">
+          <div class="space-y-1 text-left">
+            <div class="h-8 flex items-end pl-1">{{sigHtml}}</div>
+            <div class="border-t border-slate-200 pt-0.5">
+              <div class="font-bold text-slate-800 text-[10px]">{{issuerName}}</div>
+              <div class="text-[8px] uppercase tracking-wider font-sans">{{issuerDesignation}}</div>
+            </div>
+          </div>
+          <div class="text-right text-[8px] font-mono text-slate-400 space-y-0.5">
+            <div class="text-red-600 font-bold uppercase tracking-wide">NOT A GOVERNMENT-ISSUED DOCUMENT</div>
+            <div>VERIFIABLE LEDGER HASH: <span class="font-bold text-slate-800 select-all">{{documentId}}</span></div>
+          </div>
+        </div>
+      </div>
+    `,
   }
 ];

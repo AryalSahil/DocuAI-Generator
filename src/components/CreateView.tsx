@@ -4,16 +4,17 @@ import { THEMES, DOCUMENT_TEMPLATES } from '../data/mockTemplates';
 import { TEMPLATE_REGISTRY, renderTemplate } from '../data/templateRegistry';
 import { generatePdf } from '../lib/pdf';
 import { generateDocx } from '../lib/docx';
+import { logCentralizedError } from '../lib/logger';
 
 interface CreateViewProps {
   onNavigate: (path: string, state?: any) => void;
   initialPresetId?: string;
-  initialType?: 'certificate' | 'offer-letter' | 'internship-letter';
+  initialType?: 'certificate' | 'offer-letter' | 'internship-letter' | 'birth-certificate' | 'death-certificate';
 }
 
 export default function CreateView({ onNavigate, initialPresetId, initialType }: CreateViewProps) {
   // Document Type Selection State (Step 1)
-  const [selectedType, setSelectedType] = useState<'certificate' | 'offer-letter' | 'internship-letter' | null>(
+  const [selectedType, setSelectedType] = useState<'certificate' | 'offer-letter' | 'internship-letter' | 'birth-certificate' | 'death-certificate' | null>(
     initialType || null
   );
 
@@ -88,6 +89,37 @@ export default function CreateView({ onNavigate, initialPresetId, initialType }:
     // Internship Letter Specific - Additional
     additionalNotesIntern: 'A certificate of excellence was also conferred upon completion.',
 
+    // Birth Certificate Specific
+    childFullName: 'John Doe Jr.',
+    childGender: 'Male',
+    childDob: '2026-05-12',
+    childTob: '08:45 AM',
+    childPob: 'Mercy General Hospital, Room 302, Chicago, IL',
+    fatherFullName: 'John Doe Sr.',
+    motherFullName: 'Jane Doe',
+    parentAddress: '456 Lincoln Avenue, Chicago, IL 60614',
+    registrationDate: new Date().toISOString().split('T')[0],
+    issuingAuthority: 'Department of Health & Vital Statistics',
+    issuingOffice: 'Cook County Registrar Office',
+    district: 'Cook County',
+    state: 'Illinois',
+    country: 'United States',
+    notes: 'Draft reference template prepared for official legal archive review.',
+
+    // Death Certificate Specific
+    deceasedFullName: 'Robert Smith',
+    deceasedGender: 'Male',
+    deceasedAge: '78',
+    deceasedDod: '2026-06-18',
+    deceasedTod: '11:30 PM',
+    deceasedDob: '1948-03-24',
+    deceasedPod: 'St. Jude Medical Center, Suite 104, Houston, TX',
+    fatherName: 'William Smith',
+    motherName: 'Mary Smith',
+    spouseName: 'Elizabeth Smith',
+    familyAddress: '789 Oak Lane, Houston, TX 77001',
+    causeOfDeath: 'Natural Causes - Cardiorespiratory Arrest',
+
     // File Upload Base64 Data URL States
     logoFile: '', 
     sigFile: '',  
@@ -115,6 +147,17 @@ export default function CreateView({ onNavigate, initialPresetId, initialType }:
   const [lastCreatedDoc, setLastCreatedDoc] = useState<any>(null);
   const [showSuccessCard, setShowSuccessCard] = useState(false);
 
+  // Premium Fallback & Error states
+  const [templateFallbackActive, setTemplateFallbackActive] = useState(false);
+  const [aiFailureActive, setAiFailureActive] = useState(false);
+  const [exportError, setExportError] = useState<{type: 'pdf' | 'docx', message: string} | null>(null);
+
+  // High-fidelity Simulated Vector Export Handler States (Moved to comply with Rules of Hooks)
+  const [isSimulatedExporting, setIsSimulatedExporting] = useState(false);
+  const [exportType, setExportType] = useState<'pdf' | 'docx' | null>(null);
+  const [exportStep, setExportStep] = useState(0);
+  const [exportStepText, setExportStepText] = useState('');
+
   // Dynamic Database-Driven Templates & Doc Types
   const [dynamicTemplates, setDynamicTemplates] = useState<any[]>([]);
   const [dynamicDocTypes, setDynamicDocTypes] = useState<any[]>([]);
@@ -128,7 +171,10 @@ export default function CreateView({ onNavigate, initialPresetId, initialType }:
           setDynamicDocTypes(data.filter((dt: any) => dt.active));
         }
       })
-      .catch(e => console.warn('Could not load dynamic document types, falling back to mock presets', e));
+      .catch(e => {
+        console.warn('Could not load dynamic document types, falling back to mock presets', e);
+        logCentralizedError('init_doc_types', e);
+      });
 
     // Fetch active layout templates
     fetch('/api/templates')
@@ -147,7 +193,10 @@ export default function CreateView({ onNavigate, initialPresetId, initialType }:
           setDynamicTemplates(parsed);
         }
       })
-      .catch(e => console.warn('Could not load dynamic layout templates, falling back to mock presets', e));
+      .catch(e => {
+        console.warn('Could not load dynamic layout templates, falling back to mock presets', e);
+        logCentralizedError('init_templates', e);
+      });
   }, []);
 
   // 1. Auto-save to LocalStorage to retain form data across refreshes / sessions
@@ -186,11 +235,41 @@ export default function CreateView({ onNavigate, initialPresetId, initialType }:
         setSelectedTemplateId('cert-classic');
       } else if (selectedType === 'offer-letter') {
         setSelectedTemplateId('offer-professional');
-      } else {
+      } else if (selectedType === 'internship-letter') {
         setSelectedTemplateId('intern-modern');
+      } else if (selectedType === 'birth-certificate') {
+        setSelectedTemplateId('birth-classic');
+      } else if (selectedType === 'death-certificate') {
+        setSelectedTemplateId('death-classic');
       }
     }
   }, [selectedType]);
+
+  // 1b. Validate template active/available status and automatically fallback if needed
+  useEffect(() => {
+    if (selectedType) {
+      const templateRegistry = dynamicTemplates.length > 0 ? dynamicTemplates : TEMPLATE_REGISTRY;
+      const tpl = templateRegistry.find(t => t.id === selectedTemplateId && t.type === selectedType);
+      if (!tpl && selectedTemplateId) {
+        // Safe default template selection
+        let defaultId = 'cert-classic';
+        if (selectedType === 'offer-letter') {
+          defaultId = 'offer-professional';
+        } else if (selectedType === 'internship-letter') {
+          defaultId = 'intern-modern';
+        } else if (selectedType === 'birth-certificate') {
+          defaultId = 'birth-classic';
+        } else if (selectedType === 'death-certificate') {
+          defaultId = 'death-classic';
+        }
+        
+        setSelectedTemplateId(defaultId);
+        setTemplateFallbackActive(true);
+      } else {
+        setTemplateFallbackActive(false);
+      }
+    }
+  }, [selectedType, selectedTemplateId, dynamicTemplates]);
 
   // 2. Sync SelectedType with initialPresetId or initialType from routing state
   useEffect(() => {
@@ -242,7 +321,7 @@ export default function CreateView({ onNavigate, initialPresetId, initialType }:
       hash = hash & hash;
     }
     const hex = Math.abs(hash).toString(16).toUpperCase().padStart(8, '0');
-    const docPrefix = selectedType === 'certificate' ? 'CRT' : selectedType === 'offer-letter' ? 'OFR' : 'INT';
+    const docPrefix = selectedType === 'certificate' ? 'CRT' : selectedType === 'offer-letter' ? 'OFR' : selectedType === 'birth-certificate' ? 'BRT' : selectedType === 'death-certificate' ? 'DTH' : 'INT';
     setVerificationCode(`DOC-${docPrefix}-${hex.substring(0, 4)}-${hex.substring(4, 8)}`);
   }, [formData.recipientName, formData.organization, formData.issueDate, selectedType]);
 
@@ -371,25 +450,10 @@ export default function CreateView({ onNavigate, initialPresetId, initialType }:
     } catch (e: any) {
       clearTimeout(progressTimer);
       console.error(e);
-      setAiProgressText('Synthesis error. Using local layout fallback...');
-      setAiProgressValue(100);
-
-      // Graceful local fallback simulation so that the client experience never breaks
-      let mockProse = '';
-      if (selectedType === 'certificate') {
-        mockProse = `This certificate of excellence is proudly presented to ${formData.recipientName} in recognition of outstanding completion of the curriculum at ${formData.organization}. Having demonstrated exceptional capability and commitment to operations, they are formally awarded this credential on ${formData.issueDate}.`;
-      } else if (selectedType === 'offer-letter') {
-        mockProse = `We are delighted to extend this formal offer of employment to join our team at ${formData.organization} in the role of ${formData.jobTitle} starting on ${formData.joiningDate}. You will receive a base salary of ${formData.salary} and your focus on performance and quality makes you a tremendous addition to our team.`;
-      } else {
-        mockProse = `This letter attests that student ${formData.recipientName} of ${formData.collegeInstitution} successfully completed their technical internship role as ${formData.internRole} at ${formData.organization} under the supervision of ${formData.signatoryName}. During the program from ${formData.issueDate} to ${formData.endDate}, they exhibited superb capability.`;
-      }
-
-      setFormData(prev => ({ ...prev, body: mockProse }));
-      
-      setTimeout(() => {
-        setIsAiGenerating(false);
-        setAiProgressValue(0);
-      }, 1500);
+      logCentralizedError('ai_generation', e, { documentType: selectedType || undefined, recipientName: formData.recipientName });
+      setAiFailureActive(true);
+      setIsAiGenerating(false);
+      setAiProgressValue(0);
     }
   };
 
@@ -398,11 +462,18 @@ export default function CreateView({ onNavigate, initialPresetId, initialType }:
     const errors: Record<string, string> = {};
 
     // 1. Common required fields
-    if (!formData.organization.trim()) errors.organization = 'Organization Name is required';
-    if (!formData.recipientName.trim()) errors.recipientName = 'Recipient Full Name is required';
-    if (!formData.issueDate) errors.issueDate = 'Issue date is required';
-    if (!formData.signatoryName.trim()) errors.signatoryName = 'Signer/Supervisor Name is required';
-    if (!formData.signatoryTitle.trim()) errors.signatoryTitle = 'Signer Designation/Title is required';
+    if (selectedType !== 'birth-certificate' && selectedType !== 'death-certificate') {
+      if (!formData.organization.trim()) errors.organization = 'Organization Name is required';
+      if (!formData.recipientName.trim()) errors.recipientName = 'Recipient Full Name is required';
+      if (!formData.issueDate) errors.issueDate = 'Issue date is required';
+      if (!formData.signatoryName.trim()) errors.signatoryName = 'Signer/Supervisor Name is required';
+      if (!formData.signatoryTitle.trim()) errors.signatoryTitle = 'Signer Designation/Title is required';
+    } else {
+      if (!formData.issuingAuthority.trim()) errors.issuingAuthority = 'Issuing Authority is required';
+      if (!formData.issuingOffice.trim()) errors.issuingOffice = 'Issuing Office is required';
+      if (!formData.signatoryName.trim()) errors.signatoryName = 'Authorized officer signature is required';
+      if (!formData.signatoryTitle.trim()) errors.signatoryTitle = 'Officer Title/Designation is required';
+    }
 
     // 2. Certificate specific validation
     if (selectedType === 'certificate') {
@@ -472,6 +543,43 @@ export default function CreateView({ onNavigate, initialPresetId, initialType }:
       if (!formData.orgAddress.trim()) errors.orgAddress = 'Organization Address is required';
       if (!formData.certificateId.trim()) errors.certificateId = 'Document/Letter ID is required';
       if (!formData.body.trim()) errors.body = 'Internship Description / Achievements are required';
+    }
+
+    // 5. Birth certificate specific validation
+    if (selectedType === 'birth-certificate') {
+      if (!formData.childFullName.trim()) errors.childFullName = 'Child Full Name is required';
+      if (!formData.childGender.trim()) errors.childGender = 'Child Gender is required';
+      if (!formData.childDob) errors.childDob = 'Child Date of Birth is required';
+      if (!formData.childTob.trim()) errors.childTob = 'Child Time of Birth is required';
+      if (!formData.childPob.trim()) errors.childPob = 'Place of Birth is required';
+      if (!formData.fatherFullName.trim()) errors.fatherFullName = "Father's Full Name is required";
+      if (!formData.motherFullName.trim()) errors.motherFullName = "Mother's Full Name is required";
+      if (!formData.parentAddress.trim()) errors.parentAddress = 'Parent Address is required';
+      if (!formData.issuingAuthority.trim()) errors.issuingAuthority = 'Issuing Authority is required';
+      if (!formData.issuingOffice.trim()) errors.issuingOffice = 'Issuing Office is required';
+      if (!formData.district.trim()) errors.district = 'District is required';
+      if (!formData.state.trim()) errors.state = 'State is required';
+      if (!formData.country.trim()) errors.country = 'Country is required';
+    }
+
+    // 6. Death certificate specific validation
+    if (selectedType === 'death-certificate') {
+      if (!formData.deceasedFullName.trim()) errors.deceasedFullName = 'Deceased Person Full Name is required';
+      if (!formData.deceasedGender.trim()) errors.deceasedGender = 'Deceased Gender is required';
+      if (!formData.deceasedAge.trim()) errors.deceasedAge = 'Deceased Age is required';
+      if (!formData.deceasedDod) errors.deceasedDod = 'Date of Death is required';
+      if (!formData.deceasedTod.trim()) errors.deceasedTod = 'Time of Death is required';
+      if (!formData.deceasedDob) errors.deceasedDob = 'Date of Birth is required';
+      if (!formData.deceasedPod.trim()) errors.deceasedPod = 'Place of Death is required';
+      if (!formData.fatherName.trim()) errors.fatherName = "Father's Name is required";
+      if (!formData.motherName.trim()) errors.motherName = "Mother's Name is required";
+      if (!formData.familyAddress.trim()) errors.familyAddress = 'Family Address is required';
+      if (!formData.causeOfDeath.trim()) errors.causeOfDeath = 'Cause of Death is required';
+      if (!formData.issuingAuthority.trim()) errors.issuingAuthority = 'Issuing Authority is required';
+      if (!formData.issuingOffice.trim()) errors.issuingOffice = 'Issuing Office is required';
+      if (!formData.district.trim()) errors.district = 'District is required';
+      if (!formData.state.trim()) errors.state = 'State is required';
+      if (!formData.country.trim()) errors.country = 'Country is required';
     }
 
     setFormErrors(errors);
@@ -559,15 +667,15 @@ export default function CreateView({ onNavigate, initialPresetId, initialType }:
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 pt-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 pt-6">
           {/* Card 1: Certificate */}
           <div className="bg-white rounded-xl border border-slate-200/60 p-6 flex flex-col justify-between shadow-sm hover:border-indigo-400 hover:shadow-md transition-all">
             <div className="space-y-4">
               <div className="w-12 h-12 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
                 <Award className="w-6 h-6" />
               </div>
-              <h3 className="text-xl font-bold text-slate-900">Certificate</h3>
-              <p className="text-slate-600 text-sm leading-relaxed">
+              <h3 className="text-sm font-bold text-slate-900 uppercase font-mono tracking-wider">Certificate</h3>
+              <p className="text-slate-500 text-[11px] leading-relaxed">
                 Award certificates of merit, compliance, course completions, or honorariums with royal double borders, custom insignia, and formal alignment.
               </p>
             </div>
@@ -576,9 +684,9 @@ export default function CreateView({ onNavigate, initialPresetId, initialType }:
                 setSelectedType('certificate');
                 setCurrentStep(2);
               }}
-              className="mt-8 w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg transition-all"
+              className="mt-6 w-full py-2 px-3 bg-indigo-600 hover:bg-indigo-750 text-white text-[11px] font-bold rounded-lg transition-all cursor-pointer font-sans"
             >
-              Configure Parameters
+              Draft Certificate
             </button>
           </div>
 
@@ -588,8 +696,8 @@ export default function CreateView({ onNavigate, initialPresetId, initialType }:
               <div className="w-12 h-12 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
                 <FileText className="w-6 h-6" />
               </div>
-              <h3 className="text-xl font-bold text-slate-900">Offer Letter</h3>
-              <p className="text-slate-600 text-sm leading-relaxed">
+              <h3 className="text-sm font-bold text-slate-900 uppercase font-mono tracking-wider">Offer Letter</h3>
+              <p className="text-slate-500 text-[11px] leading-relaxed">
                 Formulate robust corporate employment contracts and job offers. Set salary values, start dates, and let the AI compose detailed duties.
               </p>
             </div>
@@ -598,9 +706,9 @@ export default function CreateView({ onNavigate, initialPresetId, initialType }:
                 setSelectedType('offer-letter');
                 setCurrentStep(2);
               }}
-              className="mt-8 w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg transition-all"
+              className="mt-6 w-full py-2 px-3 bg-indigo-600 hover:bg-indigo-750 text-white text-[11px] font-bold rounded-lg transition-all cursor-pointer font-sans"
             >
-              Configure Parameters
+              Draft Offer Letter
             </button>
           </div>
 
@@ -610,8 +718,8 @@ export default function CreateView({ onNavigate, initialPresetId, initialType }:
               <div className="w-12 h-12 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
                 <FileSpreadsheet className="w-6 h-6" />
               </div>
-              <h3 className="text-xl font-bold text-slate-900">Internship Letter</h3>
-              <p className="text-slate-600 text-sm leading-relaxed">
+              <h3 className="text-sm font-bold text-slate-900 uppercase font-mono tracking-wider">Internship Letter</h3>
+              <p className="text-slate-500 text-[11px] leading-relaxed">
                 Compose verified program completion certificates. Record internship duration, active contributions, project highlights, and manager remarks.
               </p>
             </div>
@@ -620,9 +728,53 @@ export default function CreateView({ onNavigate, initialPresetId, initialType }:
                 setSelectedType('internship-letter');
                 setCurrentStep(2);
               }}
-              className="mt-8 w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg transition-all"
+              className="mt-6 w-full py-2 px-3 bg-indigo-600 hover:bg-indigo-750 text-white text-[11px] font-bold rounded-lg transition-all cursor-pointer font-sans"
             >
-              Configure Parameters
+              Draft Internship
+            </button>
+          </div>
+
+          {/* Card 4: Birth Certificate Draft */}
+          <div className="bg-white rounded-xl border border-slate-200/60 p-6 flex flex-col justify-between shadow-sm hover:border-indigo-400 hover:shadow-md transition-all">
+            <div className="space-y-4">
+              <div className="w-12 h-12 rounded-lg bg-sky-50 text-sky-600 flex items-center justify-center">
+                <ShieldCheck className="w-6 h-6" />
+              </div>
+              <h3 className="text-sm font-bold text-slate-900 uppercase font-mono tracking-wider">Birth Registration</h3>
+              <p className="text-slate-500 text-[11px] leading-relaxed">
+                Legitimate draft forms for birth records. Ideal for reference archives, educational templates, and corporate record draft reviews.
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setSelectedType('birth-certificate');
+                setCurrentStep(2);
+              }}
+              className="mt-6 w-full py-2 px-3 bg-indigo-600 hover:bg-indigo-750 text-white text-[11px] font-bold rounded-lg transition-all cursor-pointer font-sans"
+            >
+              Draft Birth Form
+            </button>
+          </div>
+
+          {/* Card 5: Death Certificate Draft */}
+          <div className="bg-white rounded-xl border border-slate-200/60 p-6 flex flex-col justify-between shadow-sm hover:border-indigo-400 hover:shadow-md transition-all">
+            <div className="space-y-4">
+              <div className="w-12 h-12 rounded-lg bg-stone-100 text-stone-700 flex items-center justify-center">
+                <Printer className="w-6 h-6" />
+              </div>
+              <h3 className="text-sm font-bold text-slate-900 uppercase font-mono tracking-wider">Death Registration</h3>
+              <p className="text-slate-500 text-[11px] leading-relaxed">
+                Drafting blueprints for immediate death registration records. Designed entirely for authorized reference, estates, and legal drafts.
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setSelectedType('death-certificate');
+                setCurrentStep(2);
+              }}
+              className="mt-6 w-full py-2 px-3 bg-indigo-600 hover:bg-indigo-750 text-white text-[11px] font-bold rounded-lg transition-all cursor-pointer font-sans"
+            >
+              Draft Death Form
             </button>
           </div>
         </div>
@@ -1488,6 +1640,674 @@ export default function CreateView({ onNavigate, initialPresetId, initialType }:
             )}
 
 
+            {/* === FORM 4: BIRTH CERTIFICATE FORM === */}
+            {selectedType === 'birth-certificate' && (
+              <div className="space-y-8">
+                {/* Warning message explaining draft/reference nature of birth registration form */}
+                <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
+                  <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <h4 className="text-xs font-bold text-amber-800 uppercase tracking-wider font-mono">AUTHORIZED USE DESIGN BLUEPRINT</h4>
+                    <p className="text-slate-600 text-xs leading-relaxed">
+                      This interface compiles layout blueprints for official birth registries. It is intended strictly for authorized reference archives, institutional education, and legal document drafting. Generating fictitious credentials for fraudulent representation is illegal.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Section A: Child Information */}
+                <div className="space-y-4">
+                  <h3 className="text-xs font-bold text-indigo-600 font-mono uppercase tracking-widest border-b border-slate-100 pb-2">
+                    A. Child Parameters
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 block">Child Full Name <span className="text-rose-500">*</span></label>
+                      <input
+                        type="text"
+                        name="childFullName"
+                        value={formData.childFullName}
+                        onChange={handleInputChange}
+                        className={`w-full px-3 py-2 text-xs sm:text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 transition-all ${
+                          formErrors.childFullName ? 'border-rose-400 focus:ring-rose-100' : 'border-slate-200 focus:ring-indigo-100 focus:border-indigo-500'
+                        }`}
+                      />
+                      {formErrors.childFullName && <p className="text-rose-500 text-[10px] font-semibold">{formErrors.childFullName}</p>}
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 block">Child Gender <span className="text-rose-500">*</span></label>
+                      <select
+                        name="childGender"
+                        value={formData.childGender}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 transition-all font-sans"
+                      >
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 block">Date of Birth <span className="text-rose-500">*</span></label>
+                      <input
+                        type="date"
+                        name="childDob"
+                        value={formData.childDob}
+                        onChange={handleInputChange}
+                        className={`w-full px-3 py-2 text-xs sm:text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 transition-all ${
+                          formErrors.childDob ? 'border-rose-400 focus:ring-rose-100' : 'border-slate-200 focus:ring-indigo-100 focus:border-indigo-500'
+                        }`}
+                      />
+                      {formErrors.childDob && <p className="text-rose-500 text-[10px] font-semibold">{formErrors.childDob}</p>}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 block">Time of Birth <span className="text-rose-500">*</span></label>
+                      <input
+                        type="text"
+                        name="childTob"
+                        value={formData.childTob}
+                        onChange={handleInputChange}
+                        placeholder="e.g. 08:45 AM"
+                        className={`w-full px-3 py-2 text-xs sm:text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 transition-all ${
+                          formErrors.childTob ? 'border-rose-400 focus:ring-rose-100' : 'border-slate-200 focus:ring-indigo-100 focus:border-indigo-500'
+                        }`}
+                      />
+                      {formErrors.childTob && <p className="text-rose-500 text-[10px] font-semibold">{formErrors.childTob}</p>}
+                    </div>
+
+                    <div className="sm:col-span-2 space-y-1">
+                      <label className="text-xs font-bold text-slate-700 block">Place of Birth <span className="text-rose-500">*</span></label>
+                      <input
+                        type="text"
+                        name="childPob"
+                        value={formData.childPob}
+                        onChange={handleInputChange}
+                        placeholder="Hospital Name, Room, City, State"
+                        className={`w-full px-3 py-2 text-xs sm:text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 transition-all ${
+                          formErrors.childPob ? 'border-rose-400 focus:ring-rose-100' : 'border-slate-200 focus:ring-indigo-100 focus:border-indigo-500'
+                        }`}
+                      />
+                      {formErrors.childPob && <p className="text-rose-500 text-[10px] font-semibold">{formErrors.childPob}</p>}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section B: Parental Information */}
+                <div className="space-y-4">
+                  <h3 className="text-xs font-bold text-indigo-600 font-mono uppercase tracking-widest border-b border-slate-100 pb-2">
+                    B. Parental Parameters
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 block">Father's Full Name <span className="text-rose-500">*</span></label>
+                      <input
+                        type="text"
+                        name="fatherFullName"
+                        value={formData.fatherFullName}
+                        onChange={handleInputChange}
+                        className={`w-full px-3 py-2 text-xs sm:text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 transition-all ${
+                          formErrors.fatherFullName ? 'border-rose-400 focus:ring-rose-100' : 'border-slate-200 focus:ring-indigo-100 focus:border-indigo-500'
+                        }`}
+                      />
+                      {formErrors.fatherFullName && <p className="text-rose-500 text-[10px] font-semibold">{formErrors.fatherFullName}</p>}
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 block">Mother's Full Name <span className="text-rose-500">*</span></label>
+                      <input
+                        type="text"
+                        name="motherFullName"
+                        value={formData.motherFullName}
+                        onChange={handleInputChange}
+                        className={`w-full px-3 py-2 text-xs sm:text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 transition-all ${
+                          formErrors.motherFullName ? 'border-rose-400 focus:ring-rose-100' : 'border-slate-200 focus:ring-indigo-100 focus:border-indigo-500'
+                        }`}
+                      />
+                      {formErrors.motherFullName && <p className="text-rose-500 text-[10px] font-semibold">{formErrors.motherFullName}</p>}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700 block">Parent Residential Address <span className="text-rose-500">*</span></label>
+                    <input
+                      type="text"
+                      name="parentAddress"
+                      value={formData.parentAddress}
+                      onChange={handleInputChange}
+                      className={`w-full px-3 py-2 text-xs sm:text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 transition-all ${
+                        formErrors.parentAddress ? 'border-rose-400 focus:ring-rose-100' : 'border-slate-200 focus:ring-indigo-100 focus:border-indigo-500'
+                      }`}
+                    />
+                    {formErrors.parentAddress && <p className="text-rose-500 text-[10px] font-semibold">{formErrors.parentAddress}</p>}
+                  </div>
+                </div>
+
+                {/* Section C: Registration & Issuing Authority */}
+                <div className="space-y-4">
+                  <h3 className="text-xs font-bold text-indigo-600 font-mono uppercase tracking-widest border-b border-slate-100 pb-2">
+                    C. Ledger & Registration Coordinates
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 block">Issuing Authority Office <span className="text-rose-500">*</span></label>
+                      <input
+                        type="text"
+                        name="issuingAuthority"
+                        value={formData.issuingAuthority}
+                        onChange={handleInputChange}
+                        className={`w-full px-3 py-2 text-xs sm:text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 transition-all ${
+                          formErrors.issuingAuthority ? 'border-rose-400 focus:ring-rose-100' : 'border-slate-200 focus:ring-indigo-100 focus:border-indigo-500'
+                        }`}
+                      />
+                      {formErrors.issuingAuthority && <p className="text-rose-500 text-[10px] font-semibold">{formErrors.issuingAuthority}</p>}
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 block">Local Registrar Office Name <span className="text-rose-500">*</span></label>
+                      <input
+                        type="text"
+                        name="issuingOffice"
+                        value={formData.issuingOffice}
+                        onChange={handleInputChange}
+                        className={`w-full px-3 py-2 text-xs sm:text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 transition-all ${
+                          formErrors.issuingOffice ? 'border-rose-400 focus:ring-rose-100' : 'border-slate-200 focus:ring-indigo-100 focus:border-indigo-500'
+                        }`}
+                      />
+                      {formErrors.issuingOffice && <p className="text-rose-500 text-[10px] font-semibold">{formErrors.issuingOffice}</p>}
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 block">Registration Number / ID <span className="text-rose-500">*</span></label>
+                      <input
+                        type="text"
+                        name="certificateId"
+                        value={formData.certificateId}
+                        onChange={handleInputChange}
+                        placeholder="e.g. BR-2026-009A"
+                        className={`w-full px-3 py-2 text-xs sm:text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 transition-all ${
+                          formErrors.certificateId ? 'border-rose-400 focus:ring-rose-100' : 'border-slate-200 focus:ring-indigo-100 focus:border-indigo-500'
+                        }`}
+                      />
+                      {formErrors.certificateId && <p className="text-rose-500 text-[10px] font-semibold">{formErrors.certificateId}</p>}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 block">District <span className="text-rose-500">*</span></label>
+                      <input
+                        type="text"
+                        name="district"
+                        value={formData.district}
+                        onChange={handleInputChange}
+                        className={`w-full px-3 py-2 text-xs sm:text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 transition-all ${
+                          formErrors.district ? 'border-rose-400 focus:ring-rose-100' : 'border-slate-200 focus:ring-indigo-100 focus:border-indigo-500'
+                        }`}
+                      />
+                      {formErrors.district && <p className="text-rose-500 text-[10px] font-semibold">{formErrors.district}</p>}
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 block">State / Region <span className="text-rose-500">*</span></label>
+                      <input
+                        type="text"
+                        name="state"
+                        value={formData.state}
+                        onChange={handleInputChange}
+                        className={`w-full px-3 py-2 text-xs sm:text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 transition-all ${
+                          formErrors.state ? 'border-rose-400 focus:ring-rose-100' : 'border-slate-200 focus:ring-indigo-100 focus:border-indigo-500'
+                        }`}
+                      />
+                      {formErrors.state && <p className="text-rose-500 text-[10px] font-semibold">{formErrors.state}</p>}
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 block">Country <span className="text-rose-500">*</span></label>
+                      <input
+                        type="text"
+                        name="country"
+                        value={formData.country}
+                        onChange={handleInputChange}
+                        className={`w-full px-3 py-2 text-xs sm:text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 transition-all ${
+                          formErrors.country ? 'border-rose-400 focus:ring-rose-100' : 'border-slate-200 focus:ring-indigo-100 focus:border-indigo-500'
+                        }`}
+                      />
+                      {formErrors.country && <p className="text-rose-500 text-[10px] font-semibold">{formErrors.country}</p>}
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 block">Registration Date <span className="text-rose-500">*</span></label>
+                      <input
+                        type="date"
+                        name="registrationDate"
+                        value={formData.registrationDate}
+                        onChange={handleInputChange}
+                        className={`w-full px-3 py-2 text-xs sm:text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 transition-all ${
+                          formErrors.registrationDate ? 'border-rose-400 focus:ring-rose-100' : 'border-slate-200 focus:ring-indigo-100 focus:border-indigo-500'
+                        }`}
+                      />
+                      {formErrors.registrationDate && <p className="text-rose-500 text-[10px] font-semibold">{formErrors.registrationDate}</p>}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section D: Administrative Signatory Details */}
+                <div className="space-y-4">
+                  <h3 className="text-xs font-bold text-indigo-600 font-mono uppercase tracking-widest border-b border-slate-100 pb-2">
+                    D. Issuing Officer Sign-Off & Remarks
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 block">Authorized Officer Name <span className="text-rose-500">*</span></label>
+                      <input
+                        type="text"
+                        name="signatoryName"
+                        value={formData.signatoryName}
+                        onChange={handleInputChange}
+                        placeholder="e.g. Dr. Arthur Vance"
+                        className={`w-full px-3 py-2 text-xs sm:text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 transition-all ${
+                          formErrors.signatoryName ? 'border-rose-400 focus:ring-rose-100' : 'border-slate-200 focus:ring-indigo-100 focus:border-indigo-500'
+                        }`}
+                      />
+                      {formErrors.signatoryName && <p className="text-rose-500 text-[10px] font-semibold">{formErrors.signatoryName}</p>}
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 block">Officer Title / Designation <span className="text-rose-500">*</span></label>
+                      <input
+                        type="text"
+                        name="signatoryTitle"
+                        value={formData.signatoryTitle}
+                        placeholder="e.g. Chief County Registrar"
+                        className={`w-full px-3 py-2 text-xs sm:text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 transition-all ${
+                          formErrors.signatoryTitle ? 'border-rose-400 focus:ring-rose-100' : 'border-slate-200 focus:ring-indigo-100 focus:border-indigo-500'
+                        }`}
+                      />
+                      {formErrors.signatoryTitle && <p className="text-rose-500 text-[10px] font-semibold">{formErrors.signatoryTitle}</p>}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700 block">Administrative Remarks / Ledger Notes <span className="text-slate-400">(Optional)</span></label>
+                    <textarea
+                      name="notes"
+                      value={formData.notes}
+                      onChange={handleInputChange}
+                      rows={2}
+                      className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 transition-all font-sans"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+
+            {/* === FORM 5: DEATH CERTIFICATE FORM === */}
+            {selectedType === 'death-certificate' && (
+              <div className="space-y-8">
+                {/* Warning message explaining draft/reference nature of death registration form */}
+                <div className="p-4 bg-stone-50 border border-stone-200 rounded-xl flex items-start gap-3">
+                  <AlertCircle className="w-5 h-5 text-stone-600 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <h4 className="text-xs font-bold text-stone-800 uppercase tracking-wider font-mono">AUTHORIZED USE DESIGN BLUEPRINT</h4>
+                    <p className="text-slate-600 text-xs leading-relaxed">
+                      This interface compiles layout blueprints for official death registries. It is intended strictly for authorized reference archives, institutional education, and estate document drafting. Generating fictitious credentials for fraudulent representation is illegal.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Section A: Deceased Person Information */}
+                <div className="space-y-4">
+                  <h3 className="text-xs font-bold text-indigo-600 font-mono uppercase tracking-widest border-b border-slate-100 pb-2">
+                    A. Deceased Person Parameters
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 block">Deceased Full Name <span className="text-rose-500">*</span></label>
+                      <input
+                        type="text"
+                        name="deceasedFullName"
+                        value={formData.deceasedFullName}
+                        onChange={handleInputChange}
+                        className={`w-full px-3 py-2 text-xs sm:text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 transition-all ${
+                          formErrors.deceasedFullName ? 'border-rose-400 focus:ring-rose-100' : 'border-slate-200 focus:ring-indigo-100 focus:border-indigo-500'
+                        }`}
+                      />
+                      {formErrors.deceasedFullName && <p className="text-rose-500 text-[10px] font-semibold">{formErrors.deceasedFullName}</p>}
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 block">Gender <span className="text-rose-500">*</span></label>
+                      <select
+                        name="deceasedGender"
+                        value={formData.deceasedGender}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 transition-all font-sans"
+                      >
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 block">Age at Death <span className="text-rose-500">*</span></label>
+                      <input
+                        type="text"
+                        name="deceasedAge"
+                        value={formData.deceasedAge}
+                        onChange={handleInputChange}
+                        placeholder="e.g. 78"
+                        className={`w-full px-3 py-2 text-xs sm:text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 transition-all ${
+                          formErrors.deceasedAge ? 'border-rose-400 focus:ring-rose-100' : 'border-slate-200 focus:ring-indigo-100 focus:border-indigo-500'
+                        }`}
+                      />
+                      {formErrors.deceasedAge && <p className="text-rose-500 text-[10px] font-semibold">{formErrors.deceasedAge}</p>}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 block">Date of Death <span className="text-rose-500">*</span></label>
+                      <input
+                        type="date"
+                        name="deceasedDod"
+                        value={formData.deceasedDod}
+                        onChange={handleInputChange}
+                        className={`w-full px-3 py-2 text-xs sm:text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 transition-all ${
+                          formErrors.deceasedDod ? 'border-rose-400 focus:ring-rose-100' : 'border-slate-200 focus:ring-indigo-100 focus:border-indigo-500'
+                        }`}
+                      />
+                      {formErrors.deceasedDod && <p className="text-rose-500 text-[10px] font-semibold">{formErrors.deceasedDod}</p>}
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 block">Time of Death <span className="text-rose-500">*</span></label>
+                      <input
+                        type="text"
+                        name="deceasedTod"
+                        value={formData.deceasedTod}
+                        onChange={handleInputChange}
+                        placeholder="e.g. 11:30 PM"
+                        className={`w-full px-3 py-2 text-xs sm:text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 transition-all ${
+                          formErrors.deceasedTod ? 'border-rose-400 focus:ring-rose-100' : 'border-slate-200 focus:ring-indigo-100 focus:border-indigo-500'
+                        }`}
+                      />
+                      {formErrors.deceasedTod && <p className="text-rose-500 text-[10px] font-semibold">{formErrors.deceasedTod}</p>}
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 block">Date of Birth <span className="text-rose-500">*</span></label>
+                      <input
+                        type="date"
+                        name="deceasedDob"
+                        value={formData.deceasedDob}
+                        onChange={handleInputChange}
+                        className={`w-full px-3 py-2 text-xs sm:text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 transition-all ${
+                          formErrors.deceasedDob ? 'border-rose-400 focus:ring-rose-100' : 'border-slate-200 focus:ring-indigo-100 focus:border-indigo-500'
+                        }`}
+                      />
+                      {formErrors.deceasedDob && <p className="text-rose-500 text-[10px] font-semibold">{formErrors.deceasedDob}</p>}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700 block">Place of Death <span className="text-rose-500">*</span></label>
+                    <input
+                      type="text"
+                      name="deceasedPod"
+                      value={formData.deceasedPod}
+                      onChange={handleInputChange}
+                      placeholder="Hospital/Location Name, City, State"
+                      className={`w-full px-3 py-2 text-xs sm:text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 transition-all ${
+                        formErrors.deceasedPod ? 'border-rose-400 focus:ring-rose-100' : 'border-slate-200 focus:ring-indigo-100 focus:border-indigo-500'
+                      }`}
+                    />
+                    {formErrors.deceasedPod && <p className="text-rose-500 text-[10px] font-semibold">{formErrors.deceasedPod}</p>}
+                  </div>
+                </div>
+
+                {/* Section B: Immediate Family Contact */}
+                <div className="space-y-4">
+                  <h3 className="text-xs font-bold text-indigo-600 font-mono uppercase tracking-widest border-b border-slate-100 pb-2">
+                    B. Immediate Family Parameters
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 block">Father's Name <span className="text-rose-500">*</span></label>
+                      <input
+                        type="text"
+                        name="fatherName"
+                        value={formData.fatherName}
+                        onChange={handleInputChange}
+                        className={`w-full px-3 py-2 text-xs sm:text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 transition-all ${
+                          formErrors.fatherName ? 'border-rose-400 focus:ring-rose-100' : 'border-slate-200 focus:ring-indigo-100 focus:border-indigo-500'
+                        }`}
+                      />
+                      {formErrors.fatherName && <p className="text-rose-500 text-[10px] font-semibold">{formErrors.fatherName}</p>}
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 block">Mother's Name <span className="text-rose-500">*</span></label>
+                      <input
+                        type="text"
+                        name="motherName"
+                        value={formData.motherName}
+                        onChange={handleInputChange}
+                        className={`w-full px-3 py-2 text-xs sm:text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 transition-all ${
+                          formErrors.motherName ? 'border-rose-400 focus:ring-rose-100' : 'border-slate-200 focus:ring-indigo-100 focus:border-indigo-500'
+                        }`}
+                      />
+                      {formErrors.motherName && <p className="text-rose-500 text-[10px] font-semibold">{formErrors.motherName}</p>}
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 block">Spouse Full Name <span className="text-slate-400">(Optional)</span></label>
+                      <input
+                        type="text"
+                        name="spouseName"
+                        value={formData.spouseName}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 transition-all font-sans"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700 block">Family Address / Contact Coordinates <span className="text-rose-500">*</span></label>
+                    <input
+                      type="text"
+                      name="familyAddress"
+                      value={formData.familyAddress}
+                      onChange={handleInputChange}
+                      className={`w-full px-3 py-2 text-xs sm:text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 transition-all ${
+                        formErrors.familyAddress ? 'border-rose-400 focus:ring-rose-100' : 'border-slate-200 focus:ring-indigo-100 focus:border-indigo-500'
+                      }`}
+                    />
+                    {formErrors.familyAddress && <p className="text-rose-500 text-[10px] font-semibold">{formErrors.familyAddress}</p>}
+                  </div>
+                </div>
+
+                {/* Section C: Registration Details */}
+                <div className="space-y-4">
+                  <h3 className="text-xs font-bold text-indigo-600 font-mono uppercase tracking-widest border-b border-slate-100 pb-2">
+                    C. Ledger & Registration Coordinates
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 block">Issuing Authority <span className="text-rose-500">*</span></label>
+                      <input
+                        type="text"
+                        name="issuingAuthority"
+                        value={formData.issuingAuthority}
+                        onChange={handleInputChange}
+                        className={`w-full px-3 py-2 text-xs sm:text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 transition-all ${
+                          formErrors.issuingAuthority ? 'border-rose-400 focus:ring-rose-100' : 'border-slate-200 focus:ring-indigo-100 focus:border-indigo-500'
+                        }`}
+                      />
+                      {formErrors.issuingAuthority && <p className="text-rose-500 text-[10px] font-semibold">{formErrors.issuingAuthority}</p>}
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 block">Local Registrar Office Name <span className="text-rose-500">*</span></label>
+                      <input
+                        type="text"
+                        name="issuingOffice"
+                        value={formData.issuingOffice}
+                        onChange={handleInputChange}
+                        className={`w-full px-3 py-2 text-xs sm:text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 transition-all ${
+                          formErrors.issuingOffice ? 'border-rose-400 focus:ring-rose-100' : 'border-slate-200 focus:ring-indigo-100 focus:border-indigo-500'
+                        }`}
+                      />
+                      {formErrors.issuingOffice && <p className="text-rose-500 text-[10px] font-semibold">{formErrors.issuingOffice}</p>}
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 block">Registration Number / ID <span className="text-rose-500">*</span></label>
+                      <input
+                        type="text"
+                        name="certificateId"
+                        value={formData.certificateId}
+                        onChange={handleInputChange}
+                        placeholder="e.g. DH-2026-009A"
+                        className={`w-full px-3 py-2 text-xs sm:text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 transition-all ${
+                          formErrors.certificateId ? 'border-rose-400 focus:ring-rose-100' : 'border-slate-200 focus:ring-indigo-100 focus:border-indigo-500'
+                        }`}
+                      />
+                      {formErrors.certificateId && <p className="text-rose-500 text-[10px] font-semibold">{formErrors.certificateId}</p>}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 block">District <span className="text-rose-500">*</span></label>
+                      <input
+                        type="text"
+                        name="district"
+                        value={formData.district}
+                        onChange={handleInputChange}
+                        className={`w-full px-3 py-2 text-xs sm:text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 transition-all ${
+                          formErrors.district ? 'border-rose-400 focus:ring-rose-100' : 'border-slate-200 focus:ring-indigo-100 focus:border-indigo-500'
+                        }`}
+                      />
+                      {formErrors.district && <p className="text-rose-500 text-[10px] font-semibold">{formErrors.district}</p>}
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 block">State / Region <span className="text-rose-500">*</span></label>
+                      <input
+                        type="text"
+                        name="state"
+                        value={formData.state}
+                        onChange={handleInputChange}
+                        className={`w-full px-3 py-2 text-xs sm:text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 transition-all ${
+                          formErrors.state ? 'border-rose-400 focus:ring-rose-100' : 'border-slate-200 focus:ring-indigo-100 focus:border-indigo-500'
+                        }`}
+                      />
+                      {formErrors.state && <p className="text-rose-500 text-[10px] font-semibold">{formErrors.state}</p>}
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 block">Country <span className="text-rose-500">*</span></label>
+                      <input
+                        type="text"
+                        name="country"
+                        value={formData.country}
+                        onChange={handleInputChange}
+                        className={`w-full px-3 py-2 text-xs sm:text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 transition-all ${
+                          formErrors.country ? 'border-rose-400 focus:ring-rose-100' : 'border-slate-200 focus:ring-indigo-100 focus:border-indigo-500'
+                        }`}
+                      />
+                      {formErrors.country && <p className="text-rose-500 text-[10px] font-semibold">{formErrors.country}</p>}
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 block">Registration Date <span className="text-rose-500">*</span></label>
+                      <input
+                        type="date"
+                        name="registrationDate"
+                        value={formData.registrationDate}
+                        onChange={handleInputChange}
+                        className={`w-full px-3 py-2 text-xs sm:text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 transition-all ${
+                          formErrors.registrationDate ? 'border-rose-400 focus:ring-rose-100' : 'border-slate-200 focus:ring-indigo-100 focus:border-indigo-500'
+                        }`}
+                      />
+                      {formErrors.registrationDate && <p className="text-rose-500 text-[10px] font-semibold">{formErrors.registrationDate}</p>}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section D: Cause of death & Remarks */}
+                <div className="space-y-4">
+                  <h3 className="text-xs font-bold text-indigo-600 font-mono uppercase tracking-widest border-b border-slate-100 pb-2">
+                    D. Cause of Death & Official Sign-Off
+                  </h3>
+                  
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700 block">Certified Cause of Death <span className="text-rose-500">*</span></label>
+                    <input
+                      type="text"
+                      name="causeOfDeath"
+                      value={formData.causeOfDeath}
+                      onChange={handleInputChange}
+                      placeholder="Natural Causes, Cardiorespiratory Failure, etc."
+                      className={`w-full px-3 py-2 text-xs sm:text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 transition-all ${
+                        formErrors.causeOfDeath ? 'border-rose-400 focus:ring-rose-100' : 'border-slate-200 focus:ring-indigo-100 focus:border-indigo-500'
+                      }`}
+                    />
+                    {formErrors.causeOfDeath && <p className="text-rose-500 text-[10px] font-semibold">{formErrors.causeOfDeath}</p>}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 block">Authorized Officer Name <span className="text-rose-500">*</span></label>
+                      <input
+                        type="text"
+                        name="signatoryName"
+                        value={formData.signatoryName}
+                        onChange={handleInputChange}
+                        placeholder="e.g. Dr. Arthur Vance"
+                        className={`w-full px-3 py-2 text-xs sm:text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 transition-all ${
+                          formErrors.signatoryName ? 'border-rose-400 focus:ring-rose-100' : 'border-slate-200 focus:ring-indigo-100 focus:border-indigo-500'
+                        }`}
+                      />
+                      {formErrors.signatoryName && <p className="text-rose-500 text-[10px] font-semibold">{formErrors.signatoryName}</p>}
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 block">Officer Title / Designation <span className="text-rose-500">*</span></label>
+                      <input
+                        type="text"
+                        name="signatoryTitle"
+                        value={formData.signatoryTitle}
+                        placeholder="e.g. Chief County Registrar"
+                        className={`w-full px-3 py-2 text-xs sm:text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 transition-all ${
+                          formErrors.signatoryTitle ? 'border-rose-400 focus:ring-rose-100' : 'border-slate-200 focus:ring-indigo-100 focus:border-indigo-500'
+                        }`}
+                      />
+                      {formErrors.signatoryTitle && <p className="text-rose-500 text-[10px] font-semibold">{formErrors.signatoryTitle}</p>}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700 block">Administrative Remarks / Ledger Notes <span className="text-slate-400">(Optional)</span></label>
+                    <textarea
+                      name="notes"
+                      value={formData.notes}
+                      onChange={handleInputChange}
+                      rows={2}
+                      className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 transition-all font-sans"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+
             {/* === COMPREHENSIVE ASSETS & FILE UPLOADS === */}
             <div className="space-y-6 pt-6 border-t border-slate-100">
               <h3 className="text-xs font-bold text-indigo-600 font-mono uppercase tracking-widest">
@@ -1604,7 +2424,24 @@ export default function CreateView({ onNavigate, initialPresetId, initialType }:
   if (currentStep === 3) {
     const matchingTemplates = TEMPLATE_REGISTRY.filter((t) => t.type === selectedType);
     return (
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 animate-fade-in">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 animate-fade-in text-slate-800">
+        {templateFallbackActive && (
+          <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3 text-slate-800 animate-scale-in">
+            <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div className="space-y-1 text-left">
+              <h4 className="text-xs font-bold text-amber-800 uppercase tracking-wider font-mono">TEMPLATE AUTO-FALLBACK ACTIVATED</h4>
+              <p className="text-slate-600 text-xs leading-relaxed">
+                Selected template is unavailable, inactive, or fails to load. We've switched to the default template so you can continue generating the document without losing any progress.
+              </p>
+            </div>
+            <button 
+              onClick={() => setTemplateFallbackActive(false)}
+              className="text-xs text-amber-800 hover:text-amber-950 font-bold ml-auto"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
         
         {/* Navigation Tracker */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-200/60 pb-6">
@@ -1878,11 +2715,7 @@ export default function CreateView({ onNavigate, initialPresetId, initialType }:
     }
   };
 
-  // High-fidelity Simulated Vector Export Handler
-  const [isSimulatedExporting, setIsSimulatedExporting] = useState(false);
-  const [exportType, setExportType] = useState<'pdf' | 'docx' | null>(null);
-  const [exportStep, setExportStep] = useState(0);
-  const [exportStepText, setExportStepText] = useState('');
+  // High-fidelity Simulated Vector Export Handler (States moved to top)
 
   const triggerSimulatedExport = (type: 'pdf' | 'docx') => {
     setIsSimulatedExporting(true);
@@ -1966,11 +2799,17 @@ export default function CreateView({ onNavigate, initialPresetId, initialType }:
             const docResult = await registerRes.json();
             setLastCreatedDoc(docResult);
             setShowSuccessCard(true);
+            setIsSimulatedExporting(false);
           } catch (err: any) {
             console.error('Document compilation failed:', err);
-            alert(`Document compilation error: ${err.message || 'Generation timeout'}`);
+            // Log actual error server-side using centralized error logger
+            logCentralizedError(`export_${type}`, err, { documentType: selectedType || undefined, recipientName: formData.recipientName });
+
+            setExportError({
+              type: type as any,
+              message: err.message || 'Generation timeout'
+            });
           } finally {
-            setIsSimulatedExporting(false);
             setExportType(null);
           }
         }, 800);
@@ -2032,6 +2871,37 @@ export default function CreateView({ onNavigate, initialPresetId, initialType }:
       additionalNotesIntern: 'A certificate of excellence was also conferred upon completion.',
       logoFile: '',
       sigFile: '',
+      
+      // Birth Certificate Specific
+      childFullName: 'John Doe Jr.',
+      childGender: 'Male',
+      childDob: '2026-05-12',
+      childTob: '08:45 AM',
+      childPob: 'Mercy General Hospital, Room 302, Chicago, IL',
+      fatherFullName: 'John Doe Sr.',
+      motherFullName: 'Jane Doe',
+      parentAddress: '456 Lincoln Avenue, Chicago, IL 60614',
+      registrationDate: new Date().toISOString().split('T')[0],
+      issuingAuthority: 'Department of Health & Vital Statistics',
+      issuingOffice: 'Cook County Registrar Office',
+      district: 'Cook County',
+      state: 'Illinois',
+      country: 'United States',
+      notes: 'Draft reference template prepared for official legal archive review.',
+
+      // Death Certificate Specific
+      deceasedFullName: 'Robert Smith',
+      deceasedGender: 'Male',
+      deceasedAge: '78',
+      deceasedDod: '2026-06-18',
+      deceasedTod: '11:30 PM',
+      deceasedDob: '1948-03-24',
+      deceasedPod: 'St. Jude Medical Center, Suite 104, Houston, TX',
+      fatherName: 'William Smith',
+      motherName: 'Mary Smith',
+      spouseName: 'Elizabeth Smith',
+      familyAddress: '789 Oak Lane, Houston, TX 77001',
+      causeOfDeath: 'Natural Causes - Cardiorespiratory Arrest',
     });
     setStyling({
       fontFamily: 'Plus Jakarta Sans',
@@ -2056,7 +2926,7 @@ export default function CreateView({ onNavigate, initialPresetId, initialType }:
     const variables: Record<string, string> = {
       recipientName: formData.recipientName,
       organizationName: formData.organization,
-      documentTitle: selectedType === 'certificate' ? formData.docTitle : selectedType === 'offer-letter' ? 'Employment Contract Offer' : 'Service Verification Letter',
+      documentTitle: selectedType === 'certificate' ? formData.docTitle : selectedType === 'offer-letter' ? 'Employment Contract Offer' : selectedType === 'birth-certificate' ? 'Certificate of Birth Registration' : selectedType === 'death-certificate' ? 'Certificate of Death Registration' : 'Service Verification Letter',
       issueDate: formData.issueDate,
       documentId: verificationCode,
       issuerName: formData.signatoryName,
@@ -2080,12 +2950,60 @@ export default function CreateView({ onNavigate, initialPresetId, initialType }:
       additionalNotesIntern: formData.additionalNotesIntern || '',
       logoHtml: getLogoHtml(40, 'center'),
       sigHtml: getSigHtml(40, 'center'),
+      
+      // Birth Registration Specific
+      issuingAuthority: formData.issuingAuthority || '',
+      issuingOffice: formData.issuingOffice || '',
+      childFullName: formData.childFullName || '',
+      childGender: formData.childGender || '',
+      childDob: formData.childDob || '',
+      childTob: formData.childTob || '',
+      childPob: formData.childPob || '',
+      fatherFullName: formData.fatherFullName || '',
+      motherFullName: formData.motherFullName || '',
+      parentAddress: formData.parentAddress || '',
+      registrationDate: formData.registrationDate || '',
+      district: formData.district || '',
+      state: formData.state || '',
+      notes: formData.notes || '',
+
+      // Death Registration Specific
+      causeOfDeath: formData.causeOfDeath || '',
+      deceasedFullName: formData.deceasedFullName || '',
+      deceasedGender: formData.deceasedGender || '',
+      deceasedAge: formData.deceasedAge || '',
+      deceasedDod: formData.deceasedDod || '',
+      deceasedTod: formData.deceasedTod || '',
+      deceasedDob: formData.deceasedDob || '',
+      deceasedPod: formData.deceasedPod || '',
+      fatherName: formData.fatherName || '',
+      motherName: formData.motherName || '',
+      spouseName: formData.spouseName || '',
+      familyAddress: formData.familyAddress || '',
     };
 
     const finalDocumentMarkup = renderTemplate(currentTemplate.htmlStructure, variables);
 
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+        {templateFallbackActive && (
+          <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3 text-slate-800 animate-scale-in">
+            <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div className="space-y-1 text-left">
+              <h4 className="text-xs font-bold text-amber-800 uppercase tracking-wider font-mono">TEMPLATE AUTO-FALLBACK ACTIVATED</h4>
+              <p className="text-slate-600 text-xs leading-relaxed">
+                Selected template is unavailable, inactive, or fails to load. We've switched to the default template so you can continue generating the document without losing any progress.
+              </p>
+            </div>
+            <button 
+              onClick={() => setTemplateFallbackActive(false)}
+              className="text-xs text-amber-800 hover:text-amber-950 font-bold ml-auto"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+        
         {/* Tracker */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-200/60 pb-4 no-print">
           <button
@@ -2177,7 +3095,52 @@ export default function CreateView({ onNavigate, initialPresetId, initialType }:
                   />
                 </div>
 
-                {isAiGenerating ? (
+                {aiFailureActive ? (
+                  <div className="space-y-4">
+                    <div className="p-3 bg-red-950/60 border border-red-900/60 rounded-lg flex items-start gap-2.5">
+                      <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+                      <div className="space-y-1 text-left">
+                        <p className="text-xs font-bold text-rose-300">AI content generation is temporarily unavailable.</p>
+                        <p className="text-[10px] text-slate-400 leading-relaxed">
+                          The AI synthesis engine could not complete your request. You can retry the generation or continue manually editing the content.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAiFailureActive(false);
+                          handleAiGeneration('generate');
+                        }}
+                        className="flex-1 py-2 px-3 bg-indigo-600 hover:bg-indigo-750 text-white text-[11px] font-bold rounded-lg transition-all"
+                      >
+                        Retry AI
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAiFailureActive(false);
+                          // Apply a standard pre-filled text if empty so they can manually edit
+                          if (!formData.body.trim()) {
+                            let mockProse = '';
+                            if (selectedType === 'certificate') {
+                              mockProse = `This certificate of excellence is proudly presented to ${formData.recipientName} in recognition of outstanding completion of the curriculum at ${formData.organization}. Having demonstrated exceptional capability and commitment to operations, they are formally awarded this credential on ${formData.issueDate}.`;
+                            } else if (selectedType === 'offer-letter') {
+                              mockProse = `We are delighted to extend this formal offer of employment to join our team at ${formData.organization} in the role of ${formData.jobTitle} starting on ${formData.joiningDate}. You will receive a base salary of ${formData.salary} and your focus on performance and quality makes you a tremendous addition to our team.`;
+                            } else {
+                              mockProse = `This letter attests that student ${formData.recipientName} of ${formData.collegeInstitution} successfully completed their technical internship role as ${formData.internRole} at ${formData.organization} under the supervision of ${formData.signatoryName}. During the program from ${formData.issueDate} to ${formData.endDate}, they exhibited superb capability.`;
+                            }
+                            setFormData(prev => ({ ...prev, body: mockProse }));
+                          }
+                        }}
+                        className="flex-1 py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-bold rounded-lg transition-all"
+                      >
+                        Continue Manually
+                      </button>
+                    </div>
+                  </div>
+                ) : isAiGenerating ? (
                   <div className="p-3 bg-slate-950 border border-slate-800 rounded-lg space-y-2">
                     <div className="flex justify-between items-center text-[11px] text-indigo-400 font-semibold font-mono">
                       <span>{aiProgressText}</span>
@@ -2449,7 +3412,7 @@ export default function CreateView({ onNavigate, initialPresetId, initialType }:
   const step5Variables: Record<string, string> = {
     recipientName: formData.recipientName,
     organizationName: formData.organization,
-    documentTitle: selectedType === 'certificate' ? formData.docTitle : selectedType === 'offer-letter' ? 'Employment Contract Offer' : 'Service Verification Letter',
+    documentTitle: selectedType === 'certificate' ? formData.docTitle : selectedType === 'offer-letter' ? 'Employment Contract Offer' : selectedType === 'birth-certificate' ? 'Certificate of Birth Registration' : selectedType === 'death-certificate' ? 'Certificate of Death Registration' : 'Service Verification Letter',
     issueDate: formData.issueDate,
     documentId: verificationCode,
     issuerName: formData.signatoryName,
@@ -2473,6 +3436,36 @@ export default function CreateView({ onNavigate, initialPresetId, initialType }:
     additionalNotesIntern: formData.additionalNotesIntern || '',
     logoHtml: getLogoHtml(styling.logoSize, styling.logoAlign),
     sigHtml: getSigHtml(styling.sigSize, styling.sigAlign),
+    
+    // Birth Registration Specific
+    issuingAuthority: formData.issuingAuthority || '',
+    issuingOffice: formData.issuingOffice || '',
+    childFullName: formData.childFullName || '',
+    childGender: formData.childGender || '',
+    childDob: formData.childDob || '',
+    childTob: formData.childTob || '',
+    childPob: formData.childPob || '',
+    fatherFullName: formData.fatherFullName || '',
+    motherFullName: formData.motherFullName || '',
+    parentAddress: formData.parentAddress || '',
+    registrationDate: formData.registrationDate || '',
+    district: formData.district || '',
+    state: formData.state || '',
+    notes: formData.notes || '',
+
+    // Death Registration Specific
+    causeOfDeath: formData.causeOfDeath || '',
+    deceasedFullName: formData.deceasedFullName || '',
+    deceasedGender: formData.deceasedGender || '',
+    deceasedAge: formData.deceasedAge || '',
+    deceasedDod: formData.deceasedDod || '',
+    deceasedTod: formData.deceasedTod || '',
+    deceasedDob: formData.deceasedDob || '',
+    deceasedPod: formData.deceasedPod || '',
+    fatherName: formData.fatherName || '',
+    motherName: formData.motherName || '',
+    spouseName: formData.spouseName || '',
+    familyAddress: formData.familyAddress || '',
   };
 
   // Compile with high-fidelity injected styles
@@ -2509,6 +3502,24 @@ export default function CreateView({ onNavigate, initialPresetId, initialType }:
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+      {templateFallbackActive && (
+        <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3 text-slate-800 animate-scale-in no-print">
+          <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+          <div className="space-y-1 text-left">
+            <h4 className="text-xs font-bold text-amber-800 uppercase tracking-wider font-mono">TEMPLATE AUTO-FALLBACK ACTIVATED</h4>
+            <p className="text-slate-600 text-xs leading-relaxed">
+              Selected template is unavailable, inactive, or fails to load. We've switched to the default template so you can continue generating the document without losing any progress.
+            </p>
+          </div>
+          <button 
+            type="button"
+            onClick={() => setTemplateFallbackActive(false)}
+            className="text-xs text-amber-800 hover:text-amber-950 font-bold ml-auto"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
       
       {/* Tracker Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-200/60 pb-4 no-print">
@@ -2553,25 +3564,78 @@ export default function CreateView({ onNavigate, initialPresetId, initialType }:
       {/* simulated loading popup overlay during file generation */}
       {isSimulatedExporting && (
         <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 p-8 max-w-sm w-full text-center space-y-6 shadow-2xl animate-scale-in">
-            <div className="w-16 h-16 rounded-full bg-indigo-50 border-2 border-indigo-500 border-t-transparent animate-spin flex items-center justify-center mx-auto">
-              <FileDown className="w-6 h-6 text-indigo-600" />
-            </div>
-            <div className="space-y-2">
-              <h3 className="text-base font-bold text-slate-900 uppercase font-mono tracking-wider">
-                Compiling Secure Asset
-              </h3>
-              <p className="text-xs text-slate-500 leading-normal min-h-[36px]">
-                {exportStepText}
-              </p>
-            </div>
-            <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-              <div 
-                className="bg-indigo-600 h-full transition-all duration-300"
-                style={{ width: `${exportStep}%` }}
-              />
-            </div>
-            <div className="text-[10px] text-slate-400 font-mono tracking-widest">{exportStep}% COMPILED</div>
+          <div className="bg-white rounded-2xl border border-slate-200 p-8 max-w-md w-full text-center space-y-6 shadow-2xl animate-scale-in text-slate-800">
+            {exportError ? (
+              <div className="space-y-6">
+                <div className="w-16 h-16 rounded-full bg-rose-50 border border-rose-100 flex items-center justify-center mx-auto text-rose-600">
+                  <AlertCircle className="w-8 h-8" />
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-lg font-bold text-slate-900">
+                    {exportError.type === 'pdf' ? 'PDF Generation Failed' : 'DOCX Generation Failed'}
+                  </h3>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    {exportError.message || "We couldn't compile the document asset. Your entered information has not been lost."}
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const retryType = exportError.type;
+                      setExportError(null);
+                      triggerSimulatedExport(retryType);
+                    }}
+                    className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-750 text-white text-xs font-bold rounded-lg shadow-sm"
+                  >
+                    Retry Generation
+                  </button>
+                  {exportError.type === 'pdf' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setExportError(null);
+                        triggerSimulatedExport('docx');
+                      }}
+                      className="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-lg"
+                    >
+                      Generate DOCX Instead
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setExportError(null);
+                      setIsSimulatedExporting(false);
+                    }}
+                    className="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg"
+                  >
+                    Back to Preview
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="w-16 h-16 rounded-full bg-indigo-50 border-2 border-indigo-500 border-t-transparent animate-spin flex items-center justify-center mx-auto">
+                  <FileDown className="w-6 h-6 text-indigo-600" />
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-base font-bold text-slate-900 uppercase font-mono tracking-wider">
+                    Compiling Secure Asset
+                  </h3>
+                  <p className="text-xs text-slate-500 leading-normal min-h-[36px]">
+                    {exportStepText}
+                  </p>
+                </div>
+                <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                  <div 
+                    className="bg-indigo-600 h-full transition-all duration-300"
+                    style={{ width: `${exportStep}%` }}
+                  />
+                </div>
+                <div className="text-[10px] text-slate-400 font-mono tracking-widest">{exportStep}% COMPILED</div>
+              </>
+            )}
           </div>
         </div>
       )}

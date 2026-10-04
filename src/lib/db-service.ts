@@ -36,6 +36,8 @@ function ensureLocalDbFile() {
         { id: 'certificate', name: 'Verified Certificate', description: 'Formal, royal templates for achievements and credentials.', active: true },
         { id: 'offer-letter', name: 'Employment Offer Letter', description: 'Corporate layout agreements for executive offers.', active: true },
         { id: 'internship-letter', name: 'Internship Verification', description: 'Academic completion credentials for student cohorts.', active: true },
+        { id: 'birth-certificate', name: 'Birth Certificate', description: 'Official style registration layouts for birth records draft/templates.', active: true },
+        { id: 'death-certificate', name: 'Death Certificate', description: 'Official style registration layouts for death records draft/templates.', active: true },
       ],
       templates: TEMPLATE_REGISTRY.map(t => ({
         id: t.id,
@@ -118,6 +120,8 @@ export const dbService = {
           { id: 'certificate', name: 'Verified Certificate', description: 'Formal, royal templates for achievements and credentials.', active: true },
           { id: 'offer-letter', name: 'Employment Offer Letter', description: 'Corporate layout agreements for executive offers.', active: true },
           { id: 'internship-letter', name: 'Internship Verification', description: 'Academic completion credentials for student cohorts.', active: true },
+          { id: 'birth-certificate', name: 'Birth Certificate', description: 'Official style registration layouts for birth records draft/templates.', active: true },
+          { id: 'death-certificate', name: 'Death Certificate', description: 'Official style registration layouts for death records draft/templates.', active: true },
         ];
         
         for (const dt of docTypes) {

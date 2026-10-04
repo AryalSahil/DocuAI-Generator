@@ -7,6 +7,7 @@ import HowItWorksView from './components/HowItWorksView';
 import VerifyView from './components/VerifyView';
 import AboutView from './components/AboutView';
 import AdminView from './components/AdminView';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 export default function App() {
   const [currentPath, setCurrentPath] = useState('/');
@@ -22,6 +23,28 @@ export default function App() {
     footerText: "© 2026 DocuAI Generator. All rights reserved.",
     contactDetails: "support@docuai.org"
   });
+
+  // Dynamic Maintenance Mode State
+  const [maintenance, setMaintenance] = useState({
+    enabled: false,
+    title: "Scheduled Maintenance In Progress",
+    message: "We're currently conducting routine upgrades to improve our document generation engine. We'll be back shortly.",
+    estimatedReturn: "",
+    contactEmail: "support@docuai.org",
+    showAdminLogin: true
+  });
+
+  // Load dynamic Maintenance configuration
+  useEffect(() => {
+    fetch('/api/maintenance')
+      .then(res => res.json())
+      .then(data => {
+        if (data) {
+          setMaintenance(data);
+        }
+      })
+      .catch(err => console.warn('Could not contact maintenance status endpoint:', err));
+  }, [currentPath]);
 
   // Load customizable branding coordinates dynamically
   useEffect(() => {
@@ -63,6 +86,8 @@ export default function App() {
       '/create/certificate', 
       '/create/offer-letter', 
       '/create/internship-letter', 
+      '/create/birth-certificate', 
+      '/create/death-certificate', 
       '/templates', 
       '/how-it-works', 
       '/verify', 
@@ -104,6 +129,64 @@ export default function App() {
     { label: 'Verify', path: '/verify' },
     { label: 'About', path: '/about' },
   ];
+
+  // Intercept and render Maintenance page for public visitors if enabled
+  if (maintenance.enabled && currentPath !== '/admin') {
+    return (
+      <div className="min-h-screen bg-[#FAFAFA] text-slate-900 flex flex-col justify-center items-center px-4 py-16 font-sans select-none">
+        <div className="max-w-md w-full bg-white border border-slate-200/80 shadow-2xl rounded-3xl p-8 space-y-6 text-center animate-scale-in">
+          
+          <div className="flex justify-center">
+            {branding.logoUrl ? (
+              <img src={branding.logoUrl} alt="Platform Logo" className="h-14 object-contain" />
+            ) : (
+              <div className="w-16 h-16 bg-indigo-50 border border-indigo-150 text-indigo-600 rounded-2xl flex items-center justify-center shadow-md">
+                <ShieldCheck className="w-10 h-10" />
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <h1 className="text-2xl font-black text-slate-900 font-mono tracking-tight uppercase">
+              {maintenance.title || "We'll Be Back Soon"}
+            </h1>
+            <p className="text-slate-600 text-xs leading-relaxed max-w-xs mx-auto">
+              {maintenance.message || "DocuAI is currently undergoing scheduled maintenance."}
+            </p>
+          </div>
+
+          {maintenance.estimatedReturn && (
+            <div className="p-3 bg-indigo-50/50 border border-indigo-100/30 rounded-xl text-indigo-950 text-xs font-mono font-bold flex items-center justify-center gap-1.5">
+              <span>ESTIMATED RETURN:</span>
+              <span className="text-indigo-600">{maintenance.estimatedReturn}</span>
+            </div>
+          )}
+
+          {maintenance.contactEmail && (
+            <div className="pt-4 border-t border-slate-100 flex flex-col items-center gap-1">
+              <span className="text-[10px] font-bold text-slate-400 font-mono uppercase tracking-wider">Contact Administration</span>
+              <a href={`mailto:${maintenance.contactEmail}`} className="text-xs font-bold text-indigo-600 hover:underline">
+                {maintenance.contactEmail}
+              </a>
+            </div>
+          )}
+
+          {maintenance.showAdminLogin && (
+            <div className="pt-2">
+              <button
+                onClick={() => navigate('/admin')}
+                className="text-[9px] font-bold text-slate-400 hover:text-indigo-600 font-mono uppercase tracking-widest cursor-pointer hover:underline"
+              >
+                — Admin Entry Portal —
+              </button>
+            </div>
+          )}
+
+        </div>
+        <div className="text-[10px] text-slate-400 mt-6 font-mono">{branding.footerText}</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-[#FAFAFA] text-slate-900 selection:bg-indigo-100 selection:text-indigo-950 font-sans">
@@ -198,43 +281,49 @@ export default function App() {
 
       {/* Main Page View Router Switcher */}
       <main className="flex-grow pt-4">
-        {currentPath === '/' && (
-          <HomeView onNavigate={navigate} />
-        )}
-        
-        {currentPath.startsWith('/create') && (
-          <CreateView
-            onNavigate={navigate}
-            initialPresetId={navigationState?.presetId}
-            initialType={
-              navigationState?.type || 
-              (currentPath === '/create/certificate' ? 'certificate' :
-               currentPath === '/create/offer-letter' ? 'offer-letter' :
-               currentPath === '/create/internship-letter' ? 'internship-letter' : undefined)
-            }
-          />
-        )}
-        
-        {currentPath === '/templates' && (
-          <TemplatesView onNavigate={navigate} />
-        )}
-        
-        {currentPath === '/how-it-works' && (
-          <HowItWorksView />
-        )}
-        
-        {currentPath.startsWith('/verify') && (
-          <VerifyView initialCode={currentPath.startsWith('/verify/') ? currentPath.substring(8) : (navigationState?.code || new URLSearchParams(window.location.search).get('id') || undefined)} />
-        )}
-        
-        {currentPath === '/about' && (
-          <AboutView onNavigate={navigate} />
-        )}
-
-        {/* ADMIN PANEL AREA - Secure Admin Dashboard View */}
-        {currentPath === '/admin' && (
-          <AdminView onNavigate={navigate} />
-        )}
+        <ErrorBoundary>
+          {currentPath === '/' && (
+            <HomeView onNavigate={navigate} />
+          )}
+          
+          {currentPath.startsWith('/create') && (
+            <ErrorBoundary>
+              <CreateView
+                onNavigate={navigate}
+                initialPresetId={navigationState?.presetId}
+                initialType={
+                  navigationState?.type || 
+                  (currentPath === '/create/certificate' ? 'certificate' :
+                   currentPath === '/create/offer-letter' ? 'offer-letter' :
+                   currentPath === '/create/internship-letter' ? 'internship-letter' :
+                   currentPath === '/create/birth-certificate' ? 'birth-certificate' :
+                   currentPath === '/create/death-certificate' ? 'death-certificate' : undefined)
+                }
+              />
+            </ErrorBoundary>
+          )}
+          
+          {currentPath === '/templates' && (
+            <TemplatesView onNavigate={navigate} />
+          )}
+          
+          {currentPath === '/how-it-works' && (
+            <HowItWorksView />
+          )}
+          
+          {currentPath.startsWith('/verify') && (
+            <VerifyView initialCode={currentPath.startsWith('/verify/') ? currentPath.substring(8) : (navigationState?.code || new URLSearchParams(window.location.search).get('id') || undefined)} />
+          )}
+          
+          {currentPath === '/about' && (
+            <AboutView onNavigate={navigate} />
+          )}
+  
+          {/* ADMIN PANEL AREA - Secure Admin Dashboard View */}
+          {currentPath === '/admin' && (
+            <AdminView onNavigate={navigate} />
+          )}
+        </ErrorBoundary>
       </main>
 
       {/* Footers with exact non-telemetry elements */}

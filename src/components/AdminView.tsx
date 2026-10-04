@@ -64,6 +64,17 @@ export default function AdminView({ onNavigate }: AdminViewProps) {
   });
   const [isSavingAi, setIsSavingAi] = useState(false);
 
+  // 2b. Maintenance settings form state
+  const [maintenanceForm, setMaintenanceForm] = useState({
+    enabled: false,
+    title: 'We\'ll Be Back Soon',
+    message: 'We\'re currently improving our document generation system.',
+    estimatedReturn: '',
+    contactEmail: 'support@docuai.org',
+    showAdminLogin: true
+  });
+  const [isSavingMaintenance, setIsSavingMaintenance] = useState(false);
+
   // 3. Template CRUD modal states
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
   const [tplForm, setTplForm] = useState({
@@ -157,6 +168,10 @@ export default function AdminView({ onNavigate }: AdminViewProps) {
       // Fetch dynamic Platform Branding settings
       const brandingRes = await fetch('/api/branding');
       if (brandingRes.ok) setBrandingForm(await brandingRes.json());
+
+      // Fetch dynamic Maintenance settings
+      const maintRes = await fetch('/api/maintenance');
+      if (maintRes.ok) setMaintenanceForm(await maintRes.json());
 
       // Fetch dynamic AI engine settings
       const aiRes = await fetch('/api/admin/ai-settings', { headers });
@@ -296,6 +311,32 @@ export default function AdminView({ onNavigate }: AdminViewProps) {
       alert('Failed to update AI model parameters.');
     } finally {
       setIsSavingAi(false);
+    }
+  };
+
+  // Maintenance Settings Save
+  const handleMaintenanceSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingMaintenance(true);
+    try {
+      const res = await fetch('/api/admin/maintenance', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(maintenanceForm)
+      });
+      if (res.ok) {
+        alert('Global maintenance mode settings saved and deployed successfully!');
+        fetchAdminData();
+      } else {
+        alert('Failed to update maintenance settings.');
+      }
+    } catch (err) {
+      alert('Network error saving maintenance configuration.');
+    } finally {
+      setIsSavingMaintenance(false);
     }
   };
 
@@ -976,11 +1017,21 @@ export default function AdminView({ onNavigate }: AdminViewProps) {
                           <select
                             value={tplForm.document_type_id}
                             onChange={(e) => setTplForm(prev => ({ ...prev, document_type_id: e.target.value }))}
-                            className="w-full px-3 py-1.5 text-xs border rounded-lg bg-white"
+                            className="w-full px-3 py-1.5 text-xs border rounded-lg bg-white capitalize"
                           >
-                            <option value="certificate">Verified Certificate</option>
-                            <option value="offer-letter">Employment Offer Letter</option>
-                            <option value="internship-letter">Internship Verification</option>
+                            {documentTypes.length > 0 ? (
+                              documentTypes.map(dt => (
+                                <option key={dt.id} value={dt.id}>{dt.name}</option>
+                              ))
+                            ) : (
+                              <>
+                                <option value="certificate">Verified Certificate</option>
+                                <option value="offer-letter">Employment Offer Letter</option>
+                                <option value="internship-letter">Internship Verification</option>
+                                <option value="birth-certificate">Birth Certificate</option>
+                                <option value="death-certificate">Death Certificate</option>
+                              </>
+                            )}
                           </select>
                         </div>
                         <div className="space-y-1">
@@ -1507,10 +1558,111 @@ export default function AdminView({ onNavigate }: AdminViewProps) {
 
           {/* TAB 8: SETTINGS */}
           {activeTab === 'settings' && (
-            <div className="bg-white border border-slate-200/80 rounded-2xl shadow-sm overflow-hidden text-left p-5 space-y-4 animate-scale-in">
+            <div className="bg-white border border-slate-200/80 rounded-2xl shadow-sm overflow-hidden text-left p-5 space-y-6 animate-scale-in">
               <div>
-                <h3 className="text-sm font-bold font-mono text-slate-800 uppercase tracking-wider">System Settings</h3>
-                <p className="text-[10px] text-slate-400 font-sans font-medium">Configure credentials information.</p>
+                <h3 className="text-sm font-bold font-mono text-slate-800 uppercase tracking-wider">System Settings & Maintenance Mode</h3>
+                <p className="text-[10px] text-slate-400 font-sans font-medium">Configure credentials information and system-wide maintenance mode status.</p>
+              </div>
+
+              {/* Maintenance Mode Configuration Panel */}
+              <div className="border border-slate-200 rounded-xl p-5 space-y-4 bg-slate-50/50">
+                <div className="flex items-center gap-2 pb-2 border-b">
+                  <Settings className="w-5 h-5 text-indigo-600 animate-spin-slow" />
+                  <h4 className="text-xs font-bold text-slate-900 uppercase font-mono tracking-wider">Global Maintenance Mode Configurator</h4>
+                </div>
+
+                <form onSubmit={handleMaintenanceSave} className="space-y-4 text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Toggle: Maintenance Mode */}
+                    <div className="flex justify-between items-center py-2 bg-white px-3 rounded-lg border">
+                      <div className="space-y-0.5">
+                        <span className="font-bold text-slate-800 block">Maintenance Mode</span>
+                        <span className="text-[9px] text-slate-400">If active, redirects all public visitors to the maintenance screen.</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setMaintenanceForm(prev => ({ ...prev, enabled: !prev.enabled }))}
+                        className="p-1 cursor-pointer"
+                      >
+                        {maintenanceForm.enabled ? <ToggleRight className="w-7 h-7 text-rose-600" /> : <ToggleLeft className="w-7 h-7 text-slate-400" />}
+                      </button>
+                    </div>
+
+                    {/* Toggle: Show Admin Login */}
+                    <div className="flex justify-between items-center py-2 bg-white px-3 rounded-lg border">
+                      <div className="space-y-0.5">
+                        <span className="font-bold text-slate-800 block">Show Admin Login</span>
+                        <span className="text-[9px] text-slate-400">If active, renders a hidden login link on the maintenance screen.</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setMaintenanceForm(prev => ({ ...prev, showAdminLogin: !prev.showAdminLogin }))}
+                        className="p-1 cursor-pointer"
+                      >
+                        {maintenanceForm.showAdminLogin ? <ToggleRight className="w-7 h-7 text-emerald-600" /> : <ToggleLeft className="w-7 h-7 text-slate-400" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-400 font-mono uppercase tracking-wider block">Maintenance Title</label>
+                      <input
+                        type="text"
+                        value={maintenanceForm.title}
+                        onChange={(e) => setMaintenanceForm(prev => ({ ...prev, title: e.target.value }))}
+                        placeholder="We'll Be Back Soon"
+                        className="w-full px-3 py-2 border rounded-lg bg-white font-semibold"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-400 font-mono uppercase tracking-wider block">Estimated Return Time (Optional)</label>
+                      <input
+                        type="text"
+                        value={maintenanceForm.estimatedReturn}
+                        onChange={(e) => setMaintenanceForm(prev => ({ ...prev, estimatedReturn: e.target.value }))}
+                        placeholder="e.g. 2 Hours, Monday 9 AM"
+                        className="w-full px-3 py-2 border rounded-lg bg-white"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-400 font-mono uppercase tracking-wider block">Contact Email (Optional)</label>
+                      <input
+                        type="email"
+                        value={maintenanceForm.contactEmail}
+                        onChange={(e) => setMaintenanceForm(prev => ({ ...prev, contactEmail: e.target.value }))}
+                        placeholder="support@docuai.org"
+                        className="w-full px-3 py-2 border rounded-lg bg-white font-mono"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-400 font-mono uppercase tracking-wider block">Maintenance Detail Message</label>
+                      <input
+                        type="text"
+                        value={maintenanceForm.message}
+                        onChange={(e) => setMaintenanceForm(prev => ({ ...prev, message: e.target.value }))}
+                        placeholder="We're currently conducting routine upgrades to improve our document generation engine."
+                        className="w-full px-3 py-2 border rounded-lg bg-white"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="text-right pt-2">
+                    <button
+                      type="submit"
+                      disabled={isSavingMaintenance}
+                      className="py-2.5 px-4 bg-indigo-600 hover:bg-indigo-750 text-white font-bold rounded-lg font-mono uppercase tracking-wider shadow cursor-pointer transition-all inline-flex items-center gap-1.5"
+                    >
+                      <Save className="w-4 h-4" />
+                      {isSavingMaintenance ? 'Saving parameters...' : 'Save Maintenance Settings'}
+                    </button>
+                  </div>
+                </form>
               </div>
 
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-slate-600 text-xs leading-normal space-y-2">

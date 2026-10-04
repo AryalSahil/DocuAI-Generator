@@ -592,6 +592,53 @@ app.delete('/api/admin/documents/:id', requireAdmin, async (req, res) => {
   }
 });
 
+// O. Global Maintenance Mode Endpoint (Public check)
+app.get('/api/maintenance', async (req, res) => {
+  try {
+    const data = await dbService.getSettings('maintenance');
+    // Ensure standard keys exist
+    const fallback = {
+      enabled: false,
+      title: "Scheduled Maintenance In Progress",
+      message: "We're currently conducting routine upgrades to improve our document generation engine. We'll be back shortly.",
+      estimatedReturn: "",
+      contactEmail: "support@docuai.org",
+      showAdminLogin: true
+    };
+    return res.json({ ...fallback, ...data });
+  } catch (err) {
+    return res.json({ enabled: false });
+  }
+});
+
+// P. Save Global Maintenance Mode settings (Protected)
+app.post('/api/admin/maintenance', requireAdmin, async (req, res) => {
+  try {
+    const value = req.body;
+    await dbService.saveSettings('maintenance', value);
+    logActivity('MAINTENANCE_TOGGLED', `System maintenance mode set to: ${value.enabled ? 'ON' : 'OFF'}. Title: ${value.title}`);
+    return res.json({ success: true, data: value });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'Failed to adjust maintenance parameters.', details: err.message });
+  }
+});
+
+// Q. Server-side Error Logging Endpoint
+app.post('/api/log-error', async (req, res) => {
+  try {
+    const { context, message, stack, document_type_id, recipient_name } = req.body;
+    console.error(`[Client-side Error Logging] [Context: ${context}] [Type: ${document_type_id}] Message: ${message}`);
+    if (stack) {
+      console.error(stack);
+    }
+    // Record error inside activity logs or log to console
+    logActivity('CLIENT_ERROR', `Compilation/Export failure inside ${context} for ${recipient_name || 'unknown'}: ${message}`);
+    return res.json({ success: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'Failed to write error log.' });
+  }
+});
+
 // Mounting the Vite Middleware or serving static index depending on production stage
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, 'dist')));
